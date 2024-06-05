@@ -8,93 +8,83 @@
 
 import Foundation
 
-
 extension String {
+    public var emojiUnescapedString: String {
+        var s = self as NSString
+        Emoji.unescapeRegExp?
+            .matches(in: self, options: [], range: NSMakeRange(0, s.length))
+            .reversed()
+            .forEach { m in
+                let r = m.range
+                let p = s.substring(with: r)
+                let px = p[p.index(after: p.startIndex) ..< p.index(before: p.endIndex)]
+                if let i = Emoji.indexedShortnames[String(px)],
+                   let codepoint = Emoji.allCases[i].codepoints.first {
+                    s = s.replacingCharacters(in: r, with: codepoint) as NSString
+                }
+            }
+        return s as String
+    }
 
-    fileprivate static var emojiUnescapeRegExp = createEmojiUnescapeRegExp()
-    fileprivate static var emojiEscapeRegExp   = createEmojiEscapeRegExp()
-    fileprivate static var indexedShortnames   = indexShortnames()
-    fileprivate static var indexedCodepoints   = indexCodepoints()
+    public var emojiEscapedString: String {
+        var s = self as NSString
+        Emoji.escapeRegExp?
+            .matches(in: self, options: [], range: NSMakeRange(0, s.length))
+            .reversed()
+            .forEach { m in
+                let r = m.range
+                let p = s.substring(with: r)
+                if let i = Emoji.indexedCodepoints[p],
+                   let shortname = Emoji.allCases[i].shortnames.first {
+                    s = s.replacingCharacters(in: r, with: ":\(shortname):") as NSString
+                }
+            }
+        return s as String
+    }
+}
 
-    fileprivate static func createEmojiUnescapeRegExp() -> NSRegularExpression? {
-        let v = Emoji.allCases.flatMap { $0.shortnames }
+fileprivate extension Emoji {
+    static let unescapeRegExp    = createEmojiUnescapeRegExp()
+    static let escapeRegExp      = createEmojiEscapeRegExp()
+    static let indexedShortnames = createIndex(for: \.shortnames)
+    static let indexedCodepoints = createIndex(for: \.codepoints)
+   
+    static func createEmojiUnescapeRegExp() -> NSRegularExpression? {
+        let pattern = Emoji.allCases
+            .flatMap { $0.shortnames }
             .map { ":\(NSRegularExpression.escapedPattern(for: $0)):" }
+            .joined(separator: "|")
         do {
-            let regex = try NSRegularExpression(pattern: v.joined(separator: "|"), options: [])
-            return regex
+            return try NSRegularExpression(pattern: pattern, options: [])
         } catch {
             print(error)
         }
         return nil
     }
 
-    fileprivate static func createEmojiEscapeRegExp() -> NSRegularExpression? {
-        let v = Emoji.allCases.flatMap { $0.codepoints }
+    static func createEmojiEscapeRegExp() -> NSRegularExpression? {
+        let pattern = Emoji.allCases
+            .flatMap { $0.codepoints }
             .map { NSRegularExpression.escapedPattern(for: $0) }
             .sorted()
             .reversed()
+            .joined(separator: "|")
         do {
-            let regex = try NSRegularExpression(pattern: v.joined(separator: "|"), options: [])
-            return regex
+            return try NSRegularExpression(pattern: pattern, options: [])
         } catch {
             print(error)
         }
         return nil
     }
-    
-    fileprivate static func indexShortnames() -> [String: Int] {
-        let emojis = Emoji.allCases
-        return emojis.reduce([String: Int](), { dict, emoji -> [String: Int] in
-            guard let index = emojis.firstIndex(of: emoji) else { return [:] }
-            return emoji.shortnames.reduce(dict, { eDict, shortname -> [String: Int] in
+
+    static func createIndex(for propertyFunction: (Emoji) -> [String]) -> [String: Int] {
+        Emoji.allCases.reduce([String: Int](), { dict, emoji -> [String: Int] in
+            guard let index = Emoji.allCases.firstIndex(of: emoji) else { return [:] }
+            return propertyFunction(emoji).reduce(dict, { eDict, shortname -> [String: Int] in
                 var finalDict = eDict
                 finalDict[shortname] = index
                 return finalDict
             })
         })
     }
-    
-    fileprivate static func indexCodepoints() -> [String: Int] {
-        let emojis = Emoji.allCases
-        return emojis.reduce([String: Int](), { dict, emoji -> [String: Int] in
-            guard let index = emojis.firstIndex(of: emoji) else { return [:] }
-            return emoji.codepoints.reduce(dict, { eDict, codepoint -> [String: Int] in
-                var finalDict = eDict
-                finalDict[codepoint] = index
-                return finalDict
-            })
-        })
-    }
-    
-    public var emojiUnescapedString: String {
-        var s = self as NSString
-        let ms = String.emojiUnescapeRegExp?.matches(in: self, options: [], range: NSMakeRange(0, s.length))
-        ms?.reversed().forEach { m in
-            let r = m.range
-            let p = s.substring(with: r)
-            let px = p[p.index(after: p.startIndex) ..< p.index(before: p.endIndex)]
-            let index = String.indexedShortnames[String(px)]
-            if let i = index {
-                let e = Emoji.allCases[i]
-                s = s.replacingCharacters(in: r, with: e.codepoints.first!) as NSString
-            }
-        }
-        return s as String
-    }
-
-    public var emojiEscapedString: String {
-        var s = self as NSString
-        let ms = String.emojiEscapeRegExp?.matches(in: self, options: [], range: NSMakeRange(0, s.length))
-        ms?.reversed().forEach { m in
-            let r = m.range
-            let p = s.substring(with: r)
-            let index = String.indexedCodepoints[p]
-            if let i = index {
-                let e = Emoji.allCases[i]
-                s = s.replacingCharacters(in: r, with: ":\(e.shortnames.first!):") as NSString
-            }
-        }
-        return s as String
-    }
-
 }
